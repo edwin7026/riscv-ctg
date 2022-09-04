@@ -374,7 +374,10 @@ class cross():
     def swreg(cross_comb_instrs):
         '''
         This function generates the register which can be used as a signature pointer for each instruction.
-        It also generates the register which stores the value used by floating point registers
+        It also generates the register which stores the value used by floating point registers.
+        It chooses a regsiter as a test register
+
+        The three registers are returned as a tuple
         '''
 
         global base_isa
@@ -388,10 +391,14 @@ class cross():
 
         swreg_sol = set(['x'+str(x) for x in range(0,32 if 'e' not in base_isa else 16)]) - op_vals
 
+
         sreg = random.choice(list(swreg_sol))
-        freg_Sol = swreg_sol - set(sreg)
+        swreg_sol = swreg_sol - set(sreg)
+        testreg = random.choice(list(swreg_sol))
+        freg_Sol = swreg_sol - set(testreg)
         freg = random.choice(list(freg_Sol))
-        return (sreg, freg)
+        
+        return (sreg, freg, testreg)
 
     def get_reginit_str(cross_comb_instrs, freg):
         '''
@@ -416,20 +423,48 @@ class cross():
                     reg_init_lst.add(freg_init + '\n' + 'FLREG ' + rd_val + ', 0(' + freg + ')')
                 else:
                     reg_init_lst.add(REG_INIT[instr_dict['rd']])
+        
+        
         return list(reg_init_lst)
-    
-    def load_store_branch_init(cross_comb_instrs):
-        '''
-        This function generates the register initialization string for load/store/branch instructions
-        '''
+
+    def mem_inst_reg_init(self, cross_comb_instrs, sreg):
+        
+        reg_mem_init_str = Template('''
+        .option push;
+        .option norvc;
+        
+        $init_inst
+        
+        .option pop
+        ''')
+
+        mem_str = ''
+        index = 0
 
         for instr_dict in cross_comb_instrs:
             instr = instr_dict['instr']
+            
+            if instr in cross.load_instrs:
+                index += 1
+                rs1 = instr_dict['rs1']
 
+                #TODO Alignment
+                imm_val = 0xbabecafe + index*4 - instr['imm_val']
+                mem_str += f'la {rs1}, {hex(imm_val)}\n'
 
+            elif instr in cross.store_instrs:
+                index += 1
+                rs2 = instr_dict['rs2']
+                rs1 = instr_dict['rs1']
+                rs2_val_data = random.choice(gen_sign_dataset(xlen))
+                mem_str += f'li {rs2}, {hex(rs2_val_data)}\n \
+                            addi {rs1}, {sreg},  {index*4}\n \
+                            li {rs1}, '
 
-
-
+            elif instr in cross.branch_intrs:
+                pass
+            elif instr in cross.jal_instrs:
+                pass
     def write_test(self, fprefix, cgf_node, usage_str, cov_label, full_solution):
         '''
         Generate instruction sequence and write them into an assembly file
