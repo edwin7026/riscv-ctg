@@ -427,7 +427,7 @@ class cross():
         
         return list(reg_init_lst)
 
-    def mem_inst_reg_init(self, cross_comb_instrs, sreg):
+    def mem_inst_reg_init(cross_comb_instrs, sreg, testreg):
         
         reg_mem_init_str = Template('''
         .option push;
@@ -457,14 +457,21 @@ class cross():
                 rs2 = instr_dict['rs2']
                 rs1 = instr_dict['rs1']
                 rs2_val_data = random.choice(gen_sign_dataset(xlen))
+                imm_val = instr['imm_val']
+
+                #TODO Alignment
                 mem_str += f'li {rs2}, {hex(rs2_val_data)}\n \
                             addi {rs1}, {sreg},  {index*4}\n \
-                            li {rs1}, '
+                            li {testreg}, {imm_val}\n \
+                            sub {rs1}, {rs1}, {testreg}\n'
 
             elif instr in cross.branch_intrs:
                 pass
             elif instr in cross.jal_instrs:
                 pass
+        
+        return reg_mem_init_str.safe_substitute(init_inst = mem_str)
+
     def write_test(self, fprefix, cgf_node, usage_str, cov_label, full_solution):
         '''
         Generate instruction sequence and write them into an assembly file
@@ -495,7 +502,7 @@ class cross():
         for cross_sol in full_solution:
             
             # Designate signature update register
-            (sreg, freg) = cross.swreg(cross_sol)
+            (sreg, freg, testreg) = cross.swreg(cross_sol)
             
             # Designate count of sreg for signature label generation
             if sreg not in sreg_dict:
@@ -507,9 +514,11 @@ class cross():
             sig_label = "signature_" + sreg + "_" + str(sreg_dict[sreg])
             code = code + "\nRVTEST_SIGBASE(" + sreg + ", "+ sig_label + ")\n\n"
 
+            code += cross.mem_inst_reg_init(cross_sol, sreg, testreg)
+
             rd_lst = set()
             # Generate instruction corresponding to each instruction dictionary
-            # Append signature update statements to store rd value after each instruction
+            # Append signature update statements to store rd value after each instruction sequence
             code += '// Cross-combination test sequence\n'
             for each in cross_sol:
                 
