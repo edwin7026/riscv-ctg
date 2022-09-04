@@ -94,7 +94,13 @@ class cross():
     '''
     A cross class to genereate RISC-V assembly tests for cross-combination coverpoints.
     '''
-    
+    # Get instruction under aliases
+    load_instrs = isac_utils.import_instr_alias(base_isa + '_load')
+    store_instrs = isac_utils.import_instr_alias(base_isa + '_store')
+    branch_intrs = isac_utils.import_instr_alias(base_isa + '_branch')
+    jal_instrs = isac_utils.import_instr_alias(base_isa + '_jal')
+    dntcare_instrs = isac_utils.import_instr_alias(base_isa + '_arith') + isac_utils.import_instr_alias(base_isa + '_shift')
+
     def __init__(self, base_isa_str, xlen_in, randomize, label):
         global xlen
         global flen
@@ -132,7 +138,7 @@ class cross():
         for each in reg_file:
             exec(f"{each} = '{each}'")
 
-        dntcare_instrs = isac_utils.import_instr_alias(base_isa + '_arith') + isac_utils.import_instr_alias(base_isa + '_shift')
+        dntcare_instrs = cross.dntcare_instrs
 
         # This function retrieves available operands in a string
         def get_oprs(opr_str):
@@ -405,12 +411,24 @@ class cross():
         for instr_dict in cross_comb_instrs:
             if 'rd' in instr_dict:
                 rd_val = instr_dict['rd']
-                if rd_val[0] == 'f':
+                if rd_val[0] == 'f':            # For floating-point registers
                     freg_init = REG_INIT[freg].replace('& MASK', '>> FREGWIDTH')
                     reg_init_lst.add(freg_init + '\n' + 'FLREG ' + rd_val + ', 0(' + freg + ')')
                 else:
                     reg_init_lst.add(REG_INIT[instr_dict['rd']])
         return list(reg_init_lst)
+    
+    def load_store_branch_init(cross_comb_instrs):
+        '''
+        This function generates the register initialization string for load/store/branch instructions
+        '''
+
+        for instr_dict in cross_comb_instrs:
+            instr = instr_dict['instr']
+
+
+
+
 
     def write_test(self, fprefix, cgf_node, usage_str, cov_label, full_solution):
         '''
