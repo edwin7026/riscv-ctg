@@ -95,22 +95,24 @@ class cross():
     A cross class to genereate RISC-V assembly tests for cross-combination coverpoints.
     '''
     # Get instruction under aliases
-    load_instrs = isac_utils.import_instr_alias(base_isa + '_load')
-    store_instrs = isac_utils.import_instr_alias(base_isa + '_store')
-    branch_intrs = isac_utils.import_instr_alias(base_isa + '_branch')
-    jal_instrs = isac_utils.import_instr_alias(base_isa + '_jal')
-    dntcare_instrs = isac_utils.import_instr_alias(base_isa + '_arith') + isac_utils.import_instr_alias(base_isa + '_shift')
-
     def __init__(self, base_isa_str, xlen_in, randomize, label):
         global xlen
         global flen
         global base_isa
-        
+
         # Template dictionary
         self.OP_TEMPLATE = utils.load_yamls(const.template_files)
 
         xlen = xlen_in
         base_isa = base_isa_str
+
+        # Aliases
+        cross.load_instrs = isac_utils.import_instr_alias(base_isa + '_load')
+        cross.store_instrs = isac_utils.import_instr_alias(base_isa + '_store')
+        cross.branch_intrs = isac_utils.import_instr_alias(base_isa + '_branch')
+        cross.jal_instrs = isac_utils.import_instr_alias(base_isa + '_jal')
+        cross.dntcare_instrs = isac_utils.import_instr_alias(base_isa + '_arith') + isac_utils.import_instr_alias(base_isa + '_shift')
+
 
         self.randomize = randomize
         self.label = label
@@ -428,49 +430,43 @@ class cross():
         return list(reg_init_lst)
 
     def mem_inst_reg_init(cross_comb_instrs, sreg, testreg):
-        
-        reg_mem_init_str = Template('''
-        .option push;
-        .option norvc;
-        
-        $init_inst
-        
-        .option pop
-        ''')
 
-        mem_str = ''
+        mem_str = '// Prepare required registers for memory load/store/branch/jump instructions\n'
         index = 0
+        is_mem_op = False
 
         for instr_dict in cross_comb_instrs:
             instr = instr_dict['instr']
             
             if instr in cross.load_instrs:
                 index += 1
+                is_mem_op = True
                 rs1 = instr_dict['rs1']
-
+                imm_val = instr_dict['imm_val']
+                
                 #TODO Alignment
-                imm_val = 0xbabecafe + index*4 - instr['imm_val']
-                mem_str += f'la {rs1}, {hex(imm_val)}\n'
+                # Initialize source register value
+                mem_str += f'LA({rs1}, rvtest_data + ({index}*4) - {hex(imm_val)})\n'
 
             elif instr in cross.store_instrs:
                 index += 1
+                is_mem_op = True
+
                 rs2 = instr_dict['rs2']
                 rs1 = instr_dict['rs1']
                 rs2_val_data = random.choice(gen_sign_dataset(xlen))
-                imm_val = instr['imm_val']
+                imm_val = instr_dict['imm_val']
 
-                #TODO Alignment
-                mem_str += f'li {rs2}, {hex(rs2_val_data)}\n \
-                            addi {rs1}, {sreg},  {index*4}\n \
-                            li {testreg}, {imm_val}\n \
-                            sub {rs1}, {rs1}, {testreg}\n'
+                # Initialize source register value
+                mem_str += f'LI({rs2}, {hex(rs2_val_data)})\naddi {rs1}, {sreg}, {index*4}\nLI({testreg}, {imm_val})\nsub {rs1}, {rs1}, {testreg}\n'
 
             elif instr in cross.branch_intrs:
                 pass
             elif instr in cross.jal_instrs:
                 pass
         
-        return reg_mem_init_str.safe_substitute(init_inst = mem_str)
+        mem_str += '\n'
+        return mem_str if is_mem_op else ''
 
     def write_test(self, fprefix, cgf_node, usage_str, cov_label, full_solution):
         '''
@@ -560,3 +556,17 @@ class cross():
                                                         extension = extension
                                                         )
                     )
+
+
+if __name__ == '__main__':
+
+    covp_yaml = {'cross_comb' : {
+                        '[(add,sub) : (add,sub) ] :: [a=rd : ? ] :: [? : rs1==a or rs2==a]': 0,
+                        '[(add,sub) : lw : (add,sub) ] :: [a=rd : ? : ? ] :: [rd==x10 : rd!=a and rs1!=a and rs2!=a : rs1==a or rs2==a]': 0
+                        }
+                }
+    
+    cross_test_gen = cross('rv32i', 32, False, 'bruh')
+
+    instr_meta = cross_test_gen.cross_comb(covp_yaml)
+    print(instr_meta)
